@@ -16,17 +16,40 @@ Even when UE Editor is **not running**, the Hub can compile, install plugins, an
 - **Session notes** — Persist context for crash recovery
 - **One-click overview** — `hub_status` shows project, plugin, instances, and watcher state
 
-## Installation
+## Quick Install (30 seconds)
+
+**Zero-clone — install directly from GitHub, no git clone needed:**
 
 ```bash
-cd UnrealMCPHub
+# Option A: uv (recommended)
+uv tool install git+https://github.com/blackplume233/UnrealMCPHub.git
 
-# using uv (recommended)
-uv sync
-
-# or pip
-pip install -e .
+# Option B: pip
+pip install git+https://github.com/blackplume233/UnrealMCPHub.git
 ```
+
+Then add one block to your Cursor MCP config (`.cursor/mcp.json`) and you're done:
+
+```json
+{
+  "mcpServers": {
+    "unrealhub": {
+      "command": "unrealhub",
+      "args": ["serve"]
+    }
+  }
+}
+```
+
+That's it. Restart Cursor and the agent can manage your entire UE workflow.
+
+> **Alternative: clone + local install**
+> ```bash
+> git clone https://github.com/blackplume233/UnrealMCPHub.git
+> cd UnrealMCPHub
+> uv sync          # or: pip install -e .
+> ```
+> Then use `"command": "uv", "args": ["--directory", "/path/to/UnrealMCPHub", "run", "unrealhub", "serve"]` in MCP config.
 
 ## Quick Start
 
@@ -34,22 +57,13 @@ pip install -e .
 
 This is the primary use case. Add UnrealMCPHub as an MCP server in your AI tool, then the agent handles everything through natural language.
 
-**Step 1: Configure MCP**
+**Step 1: Install & Configure MCP** (see [Quick Install](#quick-install-30-seconds) above)
 
-Add to Cursor MCP settings (`.cursor/mcp.json`):
+**HTTP mode** (for shared / remote / multi-client use):
 
-```json
-{
-  "mcpServers": {
-    "unrealhub": {
-      "command": "uv",
-      "args": ["--directory", "/path/to/UnrealMCPHub", "run", "unrealhub", "serve"]
-    }
-  }
-}
+```bash
+unrealhub serve --http --port 9422
 ```
-
-Or HTTP mode (for shared / remote use):
 
 ```json
 {
@@ -59,12 +73,6 @@ Or HTTP mode (for shared / remote use):
     }
   }
 }
-```
-
-Then start the server manually:
-
-```bash
-uv run unrealhub serve --http --port 9422
 ```
 
 **Step 2: Talk to the agent**
@@ -179,11 +187,10 @@ unrealhub launch                               # Launch editor
 ## Development
 
 ```bash
-# Install with dev dependencies
-uv sync --extra dev
-
-# Run tests (129 tests)
-uv run pytest tests/ -v
+git clone https://github.com/blackplume233/UnrealMCPHub.git
+cd UnrealMCPHub
+uv sync --extra dev      # Install with dev dependencies
+uv run pytest tests/ -v  # Run tests (129 tests)
 ```
 
 ## Requirements
