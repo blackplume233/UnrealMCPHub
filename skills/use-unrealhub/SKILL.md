@@ -45,7 +45,7 @@ allowed-tools: Bash, Read, Write, Edit, Glob, Grep, CallMcpTool
 | **编译** | `build_project` | action, target, configuration | UBT 编译/打包 |
 | **启动** | `launch_editor` | action, exec_cmds | 编辑器生命周期 |
 | | `get_editor_status` | — | 进程状态 |
-| **实例** | `discover_instances` | rescan | 发现 UE 实例 |
+| **实例** | `discover_instances` | rescan | 发现 UE 实例（自动清理僵尸、按项目去重） |
 | | `manage_instance` | action, instance | 切换活跃实例 |
 | **监控** | `get_instance_health` | instance | 健康检查 |
 | | `get_log` | source, tail_lines | 日志读取 |
@@ -71,6 +71,26 @@ ue_call("spawn_actor", {...}, domain="level")          # 调用域工具
 
 > **关键原则**：永远通过 `ue_list_domains()` 动态发现，不要硬编码 domain 名称。
 > 新的 domain 可能在 UE 插件更新、用户安装扩展模块后出现。
+
+### 1.4 实例生命周期
+
+同一项目可以有多个存活实例（合法场景），但死亡实例会自动归并。
+
+`discover_instances(rescan=True)` 流程：
+
+```
+1. 清理已 crashed/offline 超过 1 小时的死实例
+2. 扫描配置端口
+3. 僵尸检测：标记为 online/starting 但端口无响应且 PID 已死 → 标记 offline
+4. 死实例去重：同一 project_path 的多个死实例只保留最近一个
+5. 对每个在线端口：复用已有实例 或 注册新实例
+```
+
+**行为要点**：
+- 无需手动 `manage_instance(action='unregister')` 清理死实例
+- `rescan=True` 自动识别僵尸（端口无响应 + PID 已死 → offline）
+- 同一项目的死亡实例自动归并，只保留最近一个
+- ProcessWatcher 后台每 5 分钟自动清理超龄 crashed 实例
 
 ---
 

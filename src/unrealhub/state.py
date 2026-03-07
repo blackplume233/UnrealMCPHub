@@ -331,56 +331,57 @@ class StateStore:
 
         return removed
 
-    def dedup_by_project(self) -> list[str]:
-        """Ensure at most one instance per project_path.
+    def dedup_dead_by_project(self) -> list[str]:
+        """Consolidate dead instances per project_path.
 
-        For each project with duplicates, keep the best candidate
-        (online > offline/crashed, newer last_seen wins ties) and remove the rest.
-        Instances without a project_path are left untouched.
+        For each project with multiple dead (crashed/offline) instances,
+        keep only the most recently seen one and remove the rest.
+        Alive (online/starting) instances are never touched.
 
         Returns the list of removed auto_ids.
         """
         from collections import defaultdict
 
-        groups: dict[str, list[str]] = defaultdict(list)
+        dead_groups: dict[str, list[str]] = defaultdict(list)
         with self._lock:
             for auto_id, inst in self._instances.items():
+                if inst.status in ("online", "starting"):
+                    continue
                 norm = _normalize_path(inst.project_path)
                 if not norm:
                     continue
-                groups[norm].append(auto_id)
+                dead_groups[norm].append(auto_id)
 
             removed: list[str] = []
-            for _norm_path, ids in groups.items():
+            for _norm_path, ids in dead_groups.items():
                 if len(ids) <= 1:
                     continue
 
-                def sort_key(aid: str) -> tuple:
-                    inst = self._instances[aid]
-                    alive = 1 if inst.status in ("online", "starting") else 0
-                    return (alive, inst.last_seen or "")
-
-                ids.sort(key=sort_key, reverse=True)
-                keep = ids[0]
+                ids.sort(key=lambda aid: self._instances[aid].last_seen or "", reverse=True)
 
                 for aid in ids[1:]:
                     del self._instances[aid]
                     if self._active_instance_id == aid:
-                        self._active_instance_id = keep
+                        self._active_instance_id = (
+                            next(iter(self._instances), "") if self._instances else ""
+                        )
                     removed.append(aid)
 
         if removed:
             self.save()
             for rid in removed:
                 self._fire_unregister(rid)
-            logger.info("Dedup removed instances: %s", removed)
+            logger.info("Dedup removed dead instances: %s", removed)
 
         return removed
 
     # ------------------------------------------------------------------
 
     def update_status(
-        self, instance_id: str, status: str, pid: int | None = None
+        self,
+        instance_id: str,
+        status: Literal["online", "offline", "crashed", "starting"],
+        pid: int | None = None,
     ) -> None:
         resolved = self._resolve(instance_id)
         if resolved is None:

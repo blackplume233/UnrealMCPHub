@@ -5,9 +5,36 @@ from urllib.parse import urlparse
 from mcp.server.fastmcp import FastMCP
 
 from unrealhub.ue_client import UEMCPClient
-from unrealhub.utils.process import find_unreal_editor_processes
+from unrealhub.utils.process import find_unreal_editor_processes, is_process_alive
 
 logger = logging.getLogger(__name__)
+
+STALE_INSTANCE_HOURS = 1.0
+
+
+def _mark_zombies_offline(state, scanned_ports: list[int], responded_ports: set[int]) -> list[str]:
+    """Mark zombie instances as offline.
+
+    A zombie is online/starting but its scanned port didn't respond
+    and its PID is dead (or unknown).
+    """
+    non_responding = set(scanned_ports) - responded_ports
+    if not non_responding:
+        return []
+
+    marked: list[str] = []
+    for inst in state.list_instances():
+        if inst.status not in ("online", "starting"):
+            continue
+        if inst.port not in non_responding:
+            continue
+        if inst.pid and is_process_alive(inst.pid):
+            continue
+        state.update_status(inst.auto_id, "offline")
+        marked.append(inst.auto_id)
+        logger.info("Zombie instance %s marked offline (port %d, PID %s)",
+                     inst.auto_id, inst.port, inst.pid)
+    return marked
 
 
 def register_discovery_tools(mcp: FastMCP, get_config, get_state) -> None:
@@ -19,12 +46,16 @@ def register_discovery_tools(mcp: FastMCP, get_config, get_state) -> None:
                 If False, lists instances from stored state (fast).
 
         Discovered instances are auto-registered and assigned aliases (ue1, ue2, ...).
+        During rescan, zombie instances (online but unreachable) are marked offline
+        and duplicate instances per project are consolidated.
         """
         state = get_state()
 
         if rescan:
             config = get_config()
             ports = config.get_scan_ports()
+
+            state.purge_dead_instances(max_age_hours=STALE_INSTANCE_HOURS)
 
             results: list[dict] = []
 
@@ -35,11 +66,19 @@ def register_discovery_tools(mcp: FastMCP, get_config, get_state) -> None:
 
             await asyncio.gather(*(probe_port(p) for p in ports))
 
+            responded_ports = {r["port"] for r in results}
+            zombie_ids = _mark_zombies_offline(state, ports, responded_ports)
+            dedup_ids = state.dedup_dead_by_project()
+            cleaned_ids = sorted(set(zombie_ids) | set(dedup_ids))
+
             if not results:
-                return (
+                msg = (
                     f"No UE MCP instances found on ports {ports}.\n"
                     "Is UE Editor running with RemoteMCP enabled?"
                 )
+                if cleaned_ids:
+                    msg += f"\nCleaned {len(cleaned_ids)} stale instance(s): {', '.join(cleaned_ids)}"
+                return msg
 
             running_procs = find_unreal_editor_processes()
             report_lines: list[str] = []
@@ -81,6 +120,9 @@ def register_discovery_tools(mcp: FastMCP, get_config, get_state) -> None:
 
             lines = [f"Discovered {len(results)} instance(s):"]
             lines.extend(report_lines)
+
+            if cleaned_ids:
+                lines.append(f"\nCleaned {len(cleaned_ids)} stale instance(s): {', '.join(cleaned_ids)}")
 
             active = state.get_active_instance()
             if active:

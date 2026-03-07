@@ -55,7 +55,7 @@ class TestRegisteredTools:
     def test_expected_tools_registered(self, tmp_home):
         mcp, store, get_client = _make_proxy_module()
         tool_names = {t.name for t in mcp._tool_manager.list_tools()}
-        assert tool_names == {"ue_status", "ue_list_tools", "ue_call", "ue_run_python"}
+        assert tool_names == {"ue_status", "ue_list_domains", "ue_list_tools", "ue_call", "ue_run_python"}
 
     def test_removed_tools_not_present(self, tmp_home):
         mcp, store, get_client = _make_proxy_module()

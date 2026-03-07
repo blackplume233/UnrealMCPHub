@@ -165,7 +165,7 @@ class TestStateStore:
         store.register_instance(url="http://localhost:8422/mcp", port=8422)
         store.set_alias("ue1", "dev")
         summary = store.list_instances_summary()
-        assert "dev (ue1)" in summary
+        assert "dev (port 8422)" in summary
         assert "*" in summary
 
     def test_list_instances_summary_empty(self, tmp_home):
