@@ -1,3 +1,4 @@
+import asyncio
 import json
 import logging
 import time
@@ -65,6 +66,76 @@ def register_proxy_tools(mcp: FastMCP, get_state, get_client) -> None:
 
         return "\n".join(parts) if parts else "(empty result)"
 
+    class _UECrashed(Exception):
+        """Raised by *_with_crash_guard* when the UE process dies mid-call."""
+
+    async def _with_crash_guard(coro, pid: int | None):  # noqa: ANN001
+        """Race *coro* against a PID-alive monitor.
+
+        Returns the coroutine's result on success.
+        Raises ``_UECrashed`` if the UE process (identified by *pid*)
+        dies while the call is still in flight.
+        """
+        if pid is None:
+            return await coro
+
+        from unrealhub.utils.process import is_process_alive
+
+        async def _watch_pid():
+            while is_process_alive(pid):
+                await asyncio.sleep(0.5)
+
+        call_task = asyncio.create_task(coro)
+        pid_task = asyncio.create_task(_watch_pid())
+
+        done, pending = await asyncio.wait(
+            {call_task, pid_task},
+            return_when=asyncio.FIRST_COMPLETED,
+        )
+
+        for task in pending:
+            task.cancel()
+        if pending:
+            await asyncio.wait(pending, timeout=2.0)
+
+        if call_task in done:
+            return call_task.result()
+
+        raise _UECrashed()
+
+    def _handle_crash(state, active, client) -> None:
+        """Mark the instance as crashed and invalidate the client."""
+        if active and active.status != "crashed":
+            state.update_status(active.auto_id, "crashed")
+            state.increment_crash_count(active.auto_id)
+            logger.warning(
+                "UE instance '%s' (PID %s) crashed during tool call",
+                active.auto_id,
+                active.pid,
+            )
+        if client:
+            client._reachable = False
+
+    def _crash_message(active) -> str:
+        pid_info = f" (PID {active.pid})" if active and active.pid else ""
+        inst_id = active.auto_id if active else "unknown"
+        return (
+            f"[UE CRASHED] Instance '{inst_id}'{pid_info} crashed during tool execution.\n"
+            f"Use get_log(source='crash') for crash details, "
+            f"or launch_editor(action='restart') to restart."
+        )
+
+    def _check_crash_fallback(failed: bool, state, active, client) -> str | None:
+        """After a failed call, check whether UE actually crashed (PID dead)."""
+        if not failed or not active or not active.pid:
+            return None
+        from unrealhub.utils.process import is_process_alive
+
+        if not is_process_alive(active.pid):
+            _handle_crash(state, active, client)
+            return _crash_message(active)
+        return None
+
     @mcp.tool()
     async def ue_status() -> str:
         """Get the status of the current active UE instance.
@@ -101,17 +172,33 @@ def register_proxy_tools(mcp: FastMCP, get_state, get_client) -> None:
         if not client:
             return _offline_message()
 
-        if domain:
-            result = await client.call_tool("get_dispatch", {"domain": domain})
-            return _format_tool_result(result)
-
         state = get_state()
         active = state.get_active_instance()
+        pid = active.pid if active else None
+
+        if domain:
+            try:
+                result = await _with_crash_guard(
+                    client.call_tool("get_dispatch", {"domain": domain}), pid
+                )
+            except _UECrashed:
+                _handle_crash(state, active, client)
+                return _crash_message(active)
+            crash_msg = _check_crash_fallback(
+                not result.get("success"), state, active, client
+            )
+            if crash_msg:
+                return crash_msg
+            return _format_tool_result(result)
 
         try:
-            tools = await client.list_tools()
-        except Exception as e:
-            return f"Failed to fetch tools: {e}"
+            tools = await _with_crash_guard(client.list_tools(), pid)
+        except _UECrashed:
+            _handle_crash(state, active, client)
+            return _crash_message(active)
+        crash_msg = _check_crash_fallback(not tools, state, active, client)
+        if crash_msg:
+            return crash_msg
 
         if not tools:
             return "No tools returned from UE instance."
@@ -143,7 +230,7 @@ def register_proxy_tools(mcp: FastMCP, get_state, get_client) -> None:
 
     @mcp.tool()
     async def ue_call(
-        tool_name: str, arguments: dict | None = None, domain: str = ""
+        tool_name: str, arguments: dict[str, Any] | None = None, domain: str = ""
     ) -> str:
         """Call a tool on the active UE instance.
 
@@ -160,10 +247,11 @@ def register_proxy_tools(mcp: FastMCP, get_state, get_client) -> None:
 
         state = get_state()
         active = state.get_active_instance()
+        pid = active.pid if active else None
         start = time.time()
 
         if domain:
-            result = await client.call_tool(
+            coro = client.call_tool(
                 "call_dispatch_tool",
                 {
                     "domain": domain,
@@ -173,14 +261,26 @@ def register_proxy_tools(mcp: FastMCP, get_state, get_client) -> None:
             )
             log_name = f"{domain}/{tool_name}"
         else:
-            result = await client.call_tool(tool_name, arguments or {})
+            coro = client.call_tool(tool_name, arguments or {})
             log_name = tool_name
+
+        try:
+            result = await _with_crash_guard(coro, pid)
+        except _UECrashed:
+            _handle_crash(state, active, client)
+            return _crash_message(active)
 
         duration = (time.time() - start) * 1000
 
         if active:
             state.record_tool_call(active.auto_id, log_name, result["success"], duration)
             state.save()
+
+        crash_msg = _check_crash_fallback(
+            not result.get("success"), state, active, client
+        )
+        if crash_msg:
+            return crash_msg
 
         return _format_tool_result(result)
 
@@ -194,9 +294,17 @@ def register_proxy_tools(mcp: FastMCP, get_state, get_client) -> None:
 
         state = get_state()
         active = state.get_active_instance()
+        pid = active.pid if active else None
 
         start = time.time()
-        result = await client.call_tool("run_python_script", {"script": script})
+        try:
+            result = await _with_crash_guard(
+                client.call_tool("run_python_script", {"script": script}), pid
+            )
+        except _UECrashed:
+            _handle_crash(state, active, client)
+            return _crash_message(active)
+
         duration = (time.time() - start) * 1000
 
         if active:
@@ -204,6 +312,12 @@ def register_proxy_tools(mcp: FastMCP, get_state, get_client) -> None:
                 active.auto_id, "run_python_script", result["success"], duration
             )
             state.save()
+
+        crash_msg = _check_crash_fallback(
+            not result.get("success"), state, active, client
+        )
+        if crash_msg:
+            return crash_msg
 
         return _format_tool_result(result)
 

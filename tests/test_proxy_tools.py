@@ -164,7 +164,8 @@ class TestProxyFormatting:
         assert "hello world" in result
 
     @pytest.mark.asyncio
-    async def test_format_error(self, tmp_home):
+    @patch("unrealhub.utils.process.is_process_alive", return_value=True)
+    async def test_format_error(self, _mock_alive, tmp_home):
         tools, mock_client, store = _make_online_proxy()
         mock_client.call_tool = AsyncMock(return_value={
             "success": False,
@@ -192,3 +193,80 @@ class TestProxyFormatting:
         tools = {t.name: t.fn for t in mcp._tool_manager.list_tools()}
         result = await tools["ue_call"]("any", {})
         assert "no active" in result.lower() or "online" in result.lower()
+
+
+class TestCrashGuard:
+    @pytest.mark.asyncio
+    @patch("unrealhub.utils.process.is_process_alive", return_value=False)
+    async def test_ue_call_detects_crash(self, _mock_alive, tmp_home):
+        """When PID dies during ue_call, crash message is returned immediately."""
+        tools, mock_client, store = _make_online_proxy()
+
+        async def _slow_call(*a, **kw):
+            import asyncio
+            await asyncio.sleep(10)
+            return {"success": True, "content": [], "error": None}
+
+        mock_client.call_tool = _slow_call
+        result = await tools["ue_call"]("slow_tool", {})
+        assert "CRASHED" in result
+        assert "PID 1234" in result
+        store.update_status.assert_called_once_with("ue1", "crashed")
+        store.increment_crash_count.assert_called_once_with("ue1")
+
+    @pytest.mark.asyncio
+    @patch("unrealhub.utils.process.is_process_alive", return_value=False)
+    async def test_ue_run_python_detects_crash(self, _mock_alive, tmp_home):
+        """When PID dies during ue_run_python, crash message is returned."""
+        tools, mock_client, store = _make_online_proxy()
+
+        async def _slow_call(*a, **kw):
+            import asyncio
+            await asyncio.sleep(10)
+            return {"success": True, "content": [], "error": None}
+
+        mock_client.call_tool = _slow_call
+        result = await tools["ue_run_python"]("print(1)")
+        assert "CRASHED" in result
+
+    @pytest.mark.asyncio
+    @patch("unrealhub.utils.process.is_process_alive", return_value=False)
+    async def test_ue_list_tools_detects_crash(self, _mock_alive, tmp_home):
+        """When PID dies during ue_list_tools, crash message is returned."""
+        tools, mock_client, store = _make_online_proxy()
+
+        async def _slow_list(*a, **kw):
+            import asyncio
+            await asyncio.sleep(10)
+            return []
+
+        mock_client.list_tools = _slow_list
+        result = await tools["ue_list_tools"]()
+        assert "CRASHED" in result
+
+    @pytest.mark.asyncio
+    @patch("unrealhub.utils.process.is_process_alive", return_value=False)
+    async def test_fallback_upgrades_error_to_crash(self, _mock_alive, tmp_home):
+        """A fast connection error + dead PID is upgraded to crash notification."""
+        tools, mock_client, store = _make_online_proxy()
+        mock_client.call_tool = AsyncMock(return_value={
+            "success": False,
+            "content": [],
+            "error": "Connection refused",
+        })
+        result = await tools["ue_call"]("any_tool", {})
+        assert "CRASHED" in result
+
+    @pytest.mark.asyncio
+    @patch("unrealhub.utils.process.is_process_alive", return_value=True)
+    async def test_no_false_crash_when_pid_alive(self, _mock_alive, tmp_home):
+        """Successful calls with alive PID should not trigger crash guard."""
+        tools, mock_client, store = _make_online_proxy()
+        mock_client.call_tool = AsyncMock(return_value={
+            "success": True,
+            "content": [{"type": "text", "text": "all good"}],
+            "error": None,
+        })
+        result = await tools["ue_call"]("ok_tool", {})
+        assert "all good" in result
+        assert "CRASHED" not in result
