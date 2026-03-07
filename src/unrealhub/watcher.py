@@ -6,6 +6,10 @@ from typing import Callable
 logger = logging.getLogger(__name__)
 
 
+PURGE_INTERVAL_CYCLES = 60  # run purge every N health-check cycles
+STALE_HOURS = 1.0
+
+
 class ProcessWatcher:
     """Background thread that monitors UE instance health."""
 
@@ -19,6 +23,7 @@ class ProcessWatcher:
         self._thread: threading.Thread | None = None
         self._stop_event = threading.Event()
         self._on_crash_callbacks: list[Callable] = []
+        self._cycle_count: int = 0
 
     def start(self) -> None:
         if self._thread and self._thread.is_alive():
@@ -57,6 +62,13 @@ class ProcessWatcher:
             if instance.status not in ("online", "starting"):
                 continue
             await self._check_instance(state, instance)
+
+        self._cycle_count += 1
+        if self._cycle_count >= PURGE_INTERVAL_CYCLES:
+            self._cycle_count = 0
+            purged = state.purge_dead_instances(max_age_hours=STALE_HOURS)
+            if purged:
+                logger.info("Watcher auto-purged stale instances: %s", purged)
 
     async def _check_instance(self, state, instance) -> None:
         from unrealhub.utils.process import is_process_alive

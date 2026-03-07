@@ -21,10 +21,18 @@ def get_config() -> ProjectConfig:
     return _config
 
 
+def _on_instance_unregistered(auto_id: str) -> None:
+    """Callback: clean up cached client when an instance is removed."""
+    removed = _clients.pop(auto_id, None)
+    if removed:
+        logger.debug("Cleaned up cached client for %s", auto_id)
+
+
 def get_state() -> StateStore:
     global _state
     if _state is None:
         _state = StateStore()
+        _state.on_unregister(_on_instance_unregistered)
     return _state
 
 

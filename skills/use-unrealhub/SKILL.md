@@ -121,7 +121,6 @@ c1xx: fatal error C1076: 编译器限制: 达到内部堆限制
 import gc, unreal
 gc.collect()
 unreal.SystemLibrary.collect_garbage()
-unreal.EditorLevelLibrary.new_level('/Game/Maps/EmptyTemp')
 ```
 
 #### 禁止行为
