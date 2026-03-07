@@ -105,6 +105,13 @@ class StateStore:
         STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
         STATE_PATH.write_text(json.dumps(data, indent=2), encoding="utf-8")
 
+    def _pick_alive_active(self) -> str:
+        """Return the auto_id of a living instance, or '' if none."""
+        for auto_id, inst in self._instances.items():
+            if inst.status in ("online", "starting"):
+                return auto_id
+        return ""
+
     def register_instance(
         self,
         url: str,
@@ -130,7 +137,8 @@ class StateStore:
         )
         with self._lock:
             self._instances[auto_id] = instance
-            if not self._active_instance_id:
+            current = self._instances.get(self._active_instance_id)
+            if not current or current.status not in ("online", "starting"):
                 self._active_instance_id = auto_id
         self.save()
         return instance
@@ -165,9 +173,15 @@ class StateStore:
 
     def get_active_instance(self) -> InstanceState | None:
         with self._lock:
-            if not self._active_instance_id:
-                return None
-            return self._instances.get(self._active_instance_id)
+            inst = self._instances.get(self._active_instance_id)
+            if inst and inst.status in ("online", "starting"):
+                return inst
+            # Active is dead or missing — try to find a living one
+            alive_id = self._pick_alive_active()
+            if alive_id:
+                self._active_instance_id = alive_id
+                return self._instances[alive_id]
+            return inst
 
     def set_active(self, identifier: str) -> bool:
         resolved = self._resolve(identifier)
@@ -392,6 +406,8 @@ class StateStore:
             inst.last_seen = datetime.now().isoformat()
             if pid is not None:
                 inst.pid = pid
+            if status in ("offline", "crashed") and self._active_instance_id == resolved:
+                self._active_instance_id = self._pick_alive_active()
         self.save()
 
     def record_health_check(self, instance_id: str, healthy: bool) -> None:

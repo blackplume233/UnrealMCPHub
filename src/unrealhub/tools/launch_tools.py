@@ -1,5 +1,8 @@
 import asyncio
 import logging
+import os
+import subprocess
+import sys
 import time
 
 import psutil
@@ -38,6 +41,45 @@ def register_launch_tools(
         state.save()
         return f"Editor stopped (PID: {active.pid}, instance: {active.auto_id})."
 
+    def _make_clean_env() -> dict[str, str]:
+        """Build an env dict that strips Hub's Python artifacts.
+
+        Even though UE 5.7 defaults bIsolateInterpreterEnvironment=true,
+        older engines honour PYTHON* vars, and stray env vars can still
+        confuse child process behaviour on Windows.
+        """
+        env = os.environ.copy()
+        for key in list(env):
+            upper = key.upper()
+            if upper.startswith("PYTHON") or upper in (
+                "VIRTUAL_ENV", "CONDA_DEFAULT_ENV", "CONDA_PREFIX",
+                "PIP_PREFIX", "PIP_TARGET",
+            ):
+                del env[key]
+        return env
+
+    def _subprocess_kwargs() -> dict:
+        """Platform-specific kwargs for create_subprocess_exec.
+
+        On Windows, detach UE from the Hub's process tree so it does not
+        inherit Job Objects, console handles, or scheduling constraints
+        that Cursor / the MCP host may impose.
+        """
+        kwargs: dict = dict(
+            stdin=asyncio.subprocess.DEVNULL,
+            stdout=asyncio.subprocess.DEVNULL,
+            stderr=asyncio.subprocess.DEVNULL,
+            env=_make_clean_env(),
+        )
+        if sys.platform == "win32":
+            flags = (
+                subprocess.DETACHED_PROCESS
+                | subprocess.CREATE_NEW_PROCESS_GROUP
+                | subprocess.CREATE_BREAKAWAY_FROM_JOB
+            )
+            kwargs["creationflags"] = flags
+        return kwargs
+
     async def _start_editor(config, state, paths, project, headless, extra_args,
                             exec_cmds, wait_for_mcp, timeout) -> str:
         """Launch editor subprocess, optionally wait for MCP."""
@@ -57,9 +99,7 @@ def register_launch_tools(
 
         try:
             process = await asyncio.create_subprocess_exec(
-                *cmd,
-                stdout=asyncio.subprocess.DEVNULL,
-                stderr=asyncio.subprocess.DEVNULL,
+                *cmd, **_subprocess_kwargs(),
             )
             editor_pid = process.pid or 0
         except FileNotFoundError:
@@ -76,9 +116,11 @@ def register_launch_tools(
 
         mcp_url = f"http://localhost:{project.mcp_port}/mcp"
         start = time.monotonic()
+        poll_interval = 2.0
 
         while (time.monotonic() - start) < timeout:
             if await UEMCPClient.probe_endpoint(mcp_url, timeout=2.0):
+                elapsed = round(time.monotonic() - start, 1)
                 instance = state.register_instance(
                     url=mcp_url,
                     port=project.mcp_port,
@@ -89,12 +131,13 @@ def register_launch_tools(
                 state.update_status(instance.auto_id, "online", pid=editor_pid)
                 state.save()
                 return (
-                    f"Editor launched ({mode_label}) and MCP ready!\n"
+                    f"Editor launched ({mode_label}) and MCP ready in {elapsed}s!\n"
                     f"PID: {editor_pid}\n"
                     f"MCP: {mcp_url}\n"
                     f"Instance: {instance.auto_id}"
                 )
-            await asyncio.sleep(3)
+            await asyncio.sleep(poll_interval)
+            poll_interval = min(poll_interval + 1.0, 10.0)
 
         return (
             f"Editor launched ({mode_label}, PID: {editor_pid}) but MCP did not "
@@ -137,35 +180,65 @@ def register_launch_tools(
         except ValueError as e:
             return f"Path resolution failed: {e}"
 
+        project_norm = project.uproject_path.replace("\\", "/").lower()
+
+        def _find_project_procs() -> list[dict]:
+            """Return running UE processes that belong to the active project."""
+            result = []
+            for proc in find_unreal_editor_processes():
+                proc_path = (proc.get("project_path") or "").replace("\\", "/").lower()
+                if proc_path == project_norm:
+                    result.append(proc)
+            return result
+
+        async def _kill_all_project_editors() -> str:
+            """Kill every UE process for this project + mark state offline."""
+            msgs = []
+            # Kill via OS process scan (catches editors not tracked in state)
+            for proc_info in _find_project_procs():
+                pid = proc_info["pid"]
+                try:
+                    p = psutil.Process(pid)
+                    p.terminate()
+                    gone, alive = psutil.wait_procs([p], timeout=5)
+                    if alive:
+                        alive[0].kill()
+                    msgs.append(f"Killed PID {pid}")
+                except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+                    msgs.append(f"PID {pid} already gone")
+            # Mark all tracked instances for this project as offline
+            for inst in state.list_instances():
+                if inst.status in ("online", "starting"):
+                    inst_proj = (getattr(inst, "project_path", "") or "").replace("\\", "/").lower()
+                    if inst_proj == project_norm:
+                        state.update_status(inst.auto_id, "offline")
+            state.save()
+            return "; ".join(msgs) if msgs else "No running editors found."
+
         if action == "stop":
-            active = state.get_active_instance()
-            return await _kill_editor(state, active)
+            result = await _kill_all_project_editors()
+            return f"Stop: {result}"
 
         if action == "restart":
-            active = state.get_active_instance()
-            if active:
-                kill_msg = await _kill_editor(state, active)
-                await asyncio.sleep(2)
-            else:
-                kill_msg = "No active instance found, launching fresh."
+            kill_msg = await _kill_all_project_editors()
+            if _find_project_procs():
+                await asyncio.sleep(3)
 
             start_msg = await _start_editor(
                 config, state, paths, project,
                 headless, extra_args, exec_cmds, wait_for_mcp, timeout,
             )
-            return f"{kill_msg}\n{start_msg}"
+            return f"Stop: {kill_msg}\n{start_msg}"
 
         # action == "start" (default)
-        running = find_unreal_editor_processes()
-        project_norm = project.uproject_path.replace("\\", "/").lower()
-        for proc in running:
-            proc_path = (proc.get("project_path") or "").replace("\\", "/").lower()
-            if proc_path == project_norm:
-                return (
-                    f"Editor already running for this project (PID: {proc['pid']}). "
-                    f"MCP port: {project.mcp_port}\n"
-                    f"Use launch_editor(action='restart') to force restart."
-                )
+        running_for_project = _find_project_procs()
+        if running_for_project:
+            pids = ", ".join(str(p["pid"]) for p in running_for_project)
+            return (
+                f"Editor already running for this project (PIDs: {pids}). "
+                f"MCP port: {project.mcp_port}\n"
+                f"Use launch_editor(action='restart') to force restart."
+            )
 
         return await _start_editor(
             config, state, paths, project,
