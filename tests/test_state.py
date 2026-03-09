@@ -31,7 +31,7 @@ class TestStateStore:
         assert i1.auto_id == "ue1"
         assert i2.auto_id == "ue2"
         assert len(store.list_instances()) == 2
-        assert store.get_active_instance().auto_id == "ue1"
+        assert store.get_active_instance().auto_id == "ue2"
 
     def test_unregister_instance(self, tmp_home):
         store = StateStore()

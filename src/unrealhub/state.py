@@ -381,6 +381,9 @@ class StateStore:
                         )
                     removed.append(aid)
 
+            if self._active_instance_id not in self._instances and self._instances:
+                self._active_instance_id = next(iter(self._instances))
+
         if removed:
             self.save()
             for rid in removed:
