@@ -43,7 +43,7 @@ allowed-tools: Bash, Read, Write, Edit, Glob, Grep, CallMcpTool
 | | `get_project_config` | — | 查看配置 |
 | | `hub_status` | — | Hub 全局状态 |
 | **编译** | `build_project` | action, target, configuration | UBT 编译/打包 |
-| **启动** | `launch_editor` | action, exec_cmds | 编辑器生命周期 |
+| **启动** | `launch_editor` | action, exec_cmds, build_config | 编辑器生命周期（build_config: Development/DebugGame/Debug） |
 | | `get_editor_status` | — | 进程状态 |
 | **实例** | `discover_instances` | rescan | 发现 UE 实例（自动清理僵尸、按项目去重、同端口去重） |
 | | `manage_instance` | action, instance | 切换活跃实例 |

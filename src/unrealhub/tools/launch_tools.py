@@ -15,6 +15,92 @@ from unrealhub.utils.ue_paths import UEPathResolver
 
 logger = logging.getLogger(__name__)
 
+_job_breakaway_ready = False
+
+
+def _setup_win32_job_breakaway() -> None:
+    """Create a nested Job Object that permits child process breakaway.
+
+    When the Hub runs as a PyInstaller .exe, the host (e.g. Cursor) may
+    wrap it in a Job Object that does NOT set BREAKAWAY_OK.  That causes
+    CREATE_BREAKAWAY_FROM_JOB to be silently ignored and every child
+    process (including UE) stays in the same Job — getting killed when
+    the host tears down the job.
+
+    Fix: create our own nested Job Object (Windows 8+ supports nesting)
+    with BREAKAWAY_OK, then assign the current process to it.  After
+    this, children created with CREATE_BREAKAWAY_FROM_JOB will actually
+    leave our job and become fully independent.
+
+    Called once at module registration time.  Fails silently.
+    """
+    global _job_breakaway_ready
+    if sys.platform != "win32" or _job_breakaway_ready:
+        return
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        kernel32 = ctypes.windll.kernel32
+
+        job = kernel32.CreateJobObjectW(None, None)
+        if not job:
+            return
+
+        class JOBOBJECT_BASIC_LIMIT_INFORMATION(ctypes.Structure):
+            _fields_ = [
+                ("PerProcessUserTimeLimit", ctypes.c_int64),
+                ("PerJobUserTimeLimit", ctypes.c_int64),
+                ("LimitFlags", wintypes.DWORD),
+                ("MinimumWorkingSetSize", ctypes.c_size_t),
+                ("MaximumWorkingSetSize", ctypes.c_size_t),
+                ("ActiveProcessLimit", wintypes.DWORD),
+                ("Affinity", ctypes.c_size_t),
+                ("PriorityClass", wintypes.DWORD),
+                ("SchedulingClass", wintypes.DWORD),
+            ]
+
+        class IO_COUNTERS(ctypes.Structure):
+            _fields_ = [
+                ("ReadOperationCount", ctypes.c_uint64),
+                ("WriteOperationCount", ctypes.c_uint64),
+                ("OtherOperationCount", ctypes.c_uint64),
+                ("ReadTransferCount", ctypes.c_uint64),
+                ("WriteTransferCount", ctypes.c_uint64),
+                ("OtherTransferCount", ctypes.c_uint64),
+            ]
+
+        class JOBOBJECT_EXTENDED_LIMIT_INFORMATION(ctypes.Structure):
+            _fields_ = [
+                ("BasicLimitInformation", JOBOBJECT_BASIC_LIMIT_INFORMATION),
+                ("IoInfo", IO_COUNTERS),
+                ("ProcessMemoryLimit", ctypes.c_size_t),
+                ("JobMemoryLimit", ctypes.c_size_t),
+                ("PeakProcessMemoryUsed", ctypes.c_size_t),
+                ("PeakJobMemoryUsed", ctypes.c_size_t),
+            ]
+
+        JOB_OBJECT_LIMIT_BREAKAWAY_OK = 0x00000800
+        JobObjectExtendedLimitInformation = 9
+
+        info = JOBOBJECT_EXTENDED_LIMIT_INFORMATION()
+        info.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_BREAKAWAY_OK
+
+        if not kernel32.SetInformationJobObject(
+            job, JobObjectExtendedLimitInformation,
+            ctypes.byref(info), ctypes.sizeof(info),
+        ):
+            kernel32.CloseHandle(job)
+            return
+
+        kernel32.AssignProcessToJobObject(job, kernel32.GetCurrentProcess())
+        # Intentionally leak the handle — job must outlive the process.
+        _job_breakaway_ready = True
+        logger.debug("Nested Job Object with BREAKAWAY_OK created")
+    except Exception:
+        logger.debug("Failed to create nested Job Object", exc_info=True)
+
+
 _GRACEFUL_QUIT_SCRIPT = """\
 import unreal
 try:
@@ -31,6 +117,8 @@ _FORCE_KILL_TIMEOUT = 5
 def register_launch_tools(
     mcp: FastMCP, get_config, get_state, get_ue_client_factory
 ) -> None:
+
+    _setup_win32_job_breakaway()
 
     def _make_clean_env() -> dict[str, str]:
         """Build an env dict that strips Hub's Python artifacts.
@@ -75,10 +163,23 @@ def register_launch_tools(
         return kwargs
 
     async def _start_editor(config, state, paths, project, headless, extra_args,
-                            exec_cmds, wait_for_mcp, timeout) -> str:
+                            exec_cmds, wait_for_mcp, timeout,
+                            build_config="Development") -> str:
         """Launch editor subprocess, optionally wait for MCP."""
-        cmd = [paths.editor_exe, paths.uproject_path]
-        mode_label = "normal"
+        if build_config != "Development":
+            editor_exe = UEPathResolver.editor_exe_for_config(
+                paths.engine_root, build_config,
+            )
+            if not os.path.isfile(editor_exe):
+                return (
+                    f"{build_config} editor not found: {editor_exe}\n"
+                    "Build the editor in this configuration first."
+                )
+        else:
+            editor_exe = paths.editor_exe
+
+        cmd = [editor_exe, paths.uproject_path]
+        mode_label = build_config if build_config != "Development" else "normal"
 
         if headless:
             cmd.extend(["-nullrhi", "-nosplash", "-unattended"])
@@ -94,6 +195,10 @@ def register_launch_tools(
         try:
             proc = subprocess.Popen(cmd, **_subprocess_kwargs())
             editor_pid = proc.pid
+            handle = getattr(proc, "_handle", None)
+            if sys.platform == "win32" and handle is not None:
+                handle.Close()
+                proc.returncode = 0
         except FileNotFoundError:
             return f"Editor not found at: {paths.editor_exe}"
         except Exception as e:
@@ -149,6 +254,7 @@ def register_launch_tools(
         timeout: int = 120,
         exec_cmds: str = "",
         extra_args: str = "",
+        build_config: str = "Development",
     ) -> str:
         """Manage UE Editor lifecycle for the active project.
 
@@ -159,9 +265,17 @@ def register_launch_tools(
         exec_cmds: UE console commands to execute on startup, comma-separated
                    (e.g. 'stat fps, stat unit'). Maps to UE -ExecCmds flag.
         extra_args: Additional UE command-line arguments (e.g. '-log -verbose').
+        build_config: Editor build configuration — 'Development' (default),
+                      'DebugGame', or 'Debug'. Source builds only; launcher
+                      installs only have Development.
 
         Requires project configured via setup_project.
         """
+        if build_config not in UEPathResolver.VALID_BUILD_CONFIGS:
+            return (
+                f"Invalid build_config '{build_config}'. "
+                f"Must be one of: {', '.join(UEPathResolver.VALID_BUILD_CONFIGS)}"
+            )
         config = get_config()
         project = config.get_active_project()
         if not project:
@@ -303,6 +417,7 @@ def register_launch_tools(
             start_msg = await _start_editor(
                 config, state, paths, project,
                 headless, extra_args, exec_cmds, wait_for_mcp, timeout,
+                build_config,
             )
             return f"Stop: {kill_msg}\n{start_msg}"
 
@@ -319,6 +434,7 @@ def register_launch_tools(
         return await _start_editor(
             config, state, paths, project,
             headless, extra_args, exec_cmds, wait_for_mcp, timeout,
+            build_config,
         )
 
     @mcp.tool()

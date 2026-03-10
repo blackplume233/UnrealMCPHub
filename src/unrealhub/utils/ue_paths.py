@@ -116,6 +116,14 @@ class UEPathResolver:
 
         return None
 
+    VALID_BUILD_CONFIGS = ("Development", "DebugGame", "Debug")
+
+    _PLATFORM_TAG = {
+        "win32": "Win64",
+        "darwin": "Mac",
+        "linux": "Linux",
+    }
+
     @staticmethod
     def derive_paths(engine_root: str) -> dict[str, str]:
         root = Path(engine_root)
@@ -127,6 +135,32 @@ class UEPathResolver:
             "editor_exe": str(root / "Engine/Binaries/Win64/UnrealEditor.exe"),
             "build_bat": str(root / "Engine/Build/BatchFiles/Build.bat"),
         }
+
+    @staticmethod
+    def editor_exe_for_config(
+        engine_root: str, build_config: str = "Development"
+    ) -> str:
+        """Return the editor executable path for a given build configuration.
+
+        Naming convention (Win64 example):
+          Development  → UnrealEditor.exe
+          DebugGame    → UnrealEditor-Win64-DebugGame.exe
+          Debug        → UnrealEditor-Win64-Debug.exe
+        """
+        if build_config not in UEPathResolver.VALID_BUILD_CONFIGS:
+            raise ValueError(
+                f"Invalid build_config '{build_config}'. "
+                f"Must be one of: {', '.join(UEPathResolver.VALID_BUILD_CONFIGS)}"
+            )
+
+        root = Path(engine_root)
+        tag = UEPathResolver._PLATFORM_TAG.get(sys.platform, "Linux")
+        ext = ".exe" if sys.platform == "win32" else ""
+        bin_dir = root / "Engine" / "Binaries" / tag
+
+        if build_config == "Development":
+            return str(bin_dir / f"UnrealEditor{ext}")
+        return str(bin_dir / f"UnrealEditor-{tag}-{build_config}{ext}")
 
     @staticmethod
     def validate_paths(paths: ResolvedPaths) -> list[str]:
