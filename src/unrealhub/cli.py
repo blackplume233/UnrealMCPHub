@@ -3,6 +3,8 @@ import click
 import logging
 import sys
 
+from unrealhub.tools.discovery_tools import probe_unreal_mcp_with_fallback
+
 
 @click.group()
 @click.option("--verbose", "-v", is_flag=True, help="Enable verbose logging")
@@ -102,8 +104,6 @@ def discover():
     click.echo(f"Scanning ports: {ports}")
 
     async def scan():
-        from unrealhub.tools.discovery_tools import probe_unreal_mcp_with_fallback
-
         results = []
         for port in ports:
             url = f"http://localhost:{port}/mcp"

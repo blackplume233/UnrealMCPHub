@@ -9,6 +9,7 @@ import psutil
 
 from mcp.server.fastmcp import FastMCP
 
+from unrealhub.tools.discovery_tools import probe_unreal_mcp_with_fallback
 from unrealhub.ue_client import UEMCPClient
 from unrealhub.utils.process import find_unreal_editor_processes, is_process_alive
 from unrealhub.utils.ue_paths import UEPathResolver
@@ -210,8 +211,6 @@ def register_launch_tools(
                 f"Editor launched in {mode_label} mode (PID: {editor_pid}). "
                 "Not waiting for MCP."
             )
-
-        from unrealhub.tools.discovery_tools import probe_unreal_mcp_with_fallback
 
         default_mcp_url = f"http://localhost:{project.mcp_port}/mcp"
         start = time.monotonic()

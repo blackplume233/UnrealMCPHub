@@ -47,7 +47,7 @@ class TestLaunchEditorLoopbackFallback:
             "unrealhub.tools.launch_tools.subprocess.Popen",
             return_value=fake_proc,
         ), patch(
-            "unrealhub.tools.discovery_tools.probe_unreal_mcp_with_fallback",
+            "unrealhub.tools.launch_tools.probe_unreal_mcp_with_fallback",
             new_callable=AsyncMock,
             return_value=("http://127.0.0.1:8422/mcp", {"server_name": "Remote Unreal MCP"}),
         ):

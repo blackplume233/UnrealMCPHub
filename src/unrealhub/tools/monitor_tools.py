@@ -2,6 +2,8 @@ import logging
 
 from mcp.server.fastmcp import FastMCP
 
+from unrealhub.tools.discovery_tools import probe_unreal_mcp_with_fallback
+
 logger = logging.getLogger(__name__)
 
 
@@ -22,7 +24,6 @@ def register_monitor_tools(mcp: FastMCP, get_state, get_watcher) -> None:
             return "No instance found. Run discover_instances() first."
 
         from unrealhub.utils.process import get_process_info, is_process_alive
-        from unrealhub.tools.discovery_tools import probe_unreal_mcp_with_fallback
 
         lines = [
             f"Instance: {inst.key}",

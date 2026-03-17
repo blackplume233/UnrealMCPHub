@@ -3,6 +3,8 @@ import logging
 import threading
 from typing import Callable
 
+from unrealhub.tools.discovery_tools import probe_unreal_mcp_with_fallback
+
 logger = logging.getLogger(__name__)
 
 PURGE_INTERVAL_CYCLES = 60
@@ -73,7 +75,6 @@ class ProcessWatcher:
 
     async def _check_instance(self, state, instance) -> None:
         from unrealhub.utils.process import is_process_alive
-        from unrealhub.tools.discovery_tools import probe_unreal_mcp_with_fallback
 
         probe = await probe_unreal_mcp_with_fallback(instance.url, timeout=2.0)
 
