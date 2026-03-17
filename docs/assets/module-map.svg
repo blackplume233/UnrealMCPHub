@@ -1,0 +1,61 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="980" viewBox="0 0 1400 980">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#f7f3ea"/>
+      <stop offset="100%" stop-color="#eef6f7"/>
+    </linearGradient>
+    <style>
+      .title { font: 700 34px "Segoe UI", Arial, sans-serif; fill: #18324b; }
+      .subtitle { font: 500 18px "Segoe UI", Arial, sans-serif; fill: #486179; }
+      .group { font: 700 22px "Segoe UI", Arial, sans-serif; fill: #17324a; }
+      .body { font: 500 16px "Segoe UI", Arial, sans-serif; fill: #4f6476; }
+      .small { font: 600 15px "Segoe UI", Arial, sans-serif; fill: #5d6f80; }
+      .file { font: 700 18px Consolas, monospace; fill: #17324a; }
+    </style>
+  </defs>
+  <rect width="1400" height="980" fill="url(#bg)"/>
+  <text x="84" y="86" class="title">Internal Module Map</text>
+  <text x="84" y="122" class="subtitle">The codebase follows the same outer narrative as the product: serve MCP, track project state, manage the editor lifecycle, then proxy into UE.</text>
+  <rect x="84" y="180" width="300" height="320" rx="28" fill="#dbeeff"/>
+  <text x="118" y="230" class="group">Entry Surface</text>
+  <text x="118" y="272" class="file">cli.py</text>
+  <text x="118" y="304" class="body">Human-friendly commands: setup, serve, compile, launch, discover, monitor</text>
+  <text x="118" y="356" class="file">server.py</text>
+  <text x="118" y="388" class="body">FastMCP bootstrap and tool registration for setup_project, hub_status, ue_* calls</text>
+  <rect x="420" y="180" width="300" height="320" rx="28" fill="#ffe5c8"/>
+  <text x="454" y="230" class="group">Persistent Context</text>
+  <text x="454" y="272" class="file">config.py</text>
+  <text x="454" y="304" class="body">Stores project entries, active project, plugin source and scan ports</text>
+  <text x="454" y="356" class="file">state.py</text>
+  <text x="454" y="388" class="body">Tracks active instances, crash counts, notes, and call history</text>
+  <rect x="756" y="180" width="300" height="320" rx="28" fill="#daf5dc"/>
+  <text x="790" y="230" class="group">UE Connectivity</text>
+  <text x="790" y="272" class="file">ue_client.py</text>
+  <text x="790" y="304" class="body">HTTP client wrapper for UE MCP endpoints</text>
+  <text x="790" y="356" class="file">watcher.py</text>
+  <text x="790" y="388" class="body">Process monitoring and crash detection callbacks</text>
+  <rect x="1092" y="180" width="224" height="320" rx="28" fill="#ffffff"/>
+  <text x="1124" y="230" class="group">Utilities</text>
+  <text x="1124" y="272" class="file">utils/ue_paths.py</text>
+  <text x="1124" y="304" class="body">Engine discovery and path resolution</text>
+  <text x="1124" y="356" class="file">utils/process.py</text>
+  <text x="1124" y="388" class="body">Subprocess helpers</text>
+  <rect x="84" y="560" width="1232" height="300" rx="30" fill="#fffdf8"/>
+  <text x="122" y="616" class="group">Tool Modules in src/unrealhub/tools</text>
+  <text x="122" y="654" class="small">build_tools.py</text>
+  <text x="122" y="680" class="body">Compile active projects via Unreal Build Tool</text>
+  <text x="122" y="724" class="small">install_tools.py</text>
+  <text x="122" y="750" class="body">Install or update RemoteMCP from local or remote source</text>
+  <text x="446" y="654" class="small">launch_tools.py</text>
+  <text x="446" y="680" class="body">Start editor, wait for readiness, restart flows</text>
+  <text x="446" y="724" class="small">discovery_tools.py</text>
+  <text x="446" y="750" class="body">Scan ports and identify online Unreal MCP instances</text>
+  <text x="794" y="654" class="small">proxy_tools.py</text>
+  <text x="794" y="680" class="body">Forward ue_run_python, ue_call, dispatch helpers to active editor</text>
+  <text x="794" y="724" class="small">session_tools.py</text>
+  <text x="794" y="750" class="body">Notes and recovery context</text>
+  <text x="1112" y="654" class="small">log_tools.py / monitor_tools.py</text>
+  <text x="1112" y="680" class="body">Observability and monitoring support</text>
+  <text x="1112" y="724" class="small">tests/</text>
+  <text x="1112" y="750" class="body">Covers config, state, discovery, proxy, install, server, watcher and utilities</text>
+</svg>

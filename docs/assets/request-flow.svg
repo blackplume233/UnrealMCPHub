@@ -1,0 +1,55 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="980" viewBox="0 0 1400 980">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#f6f1e7"/>
+      <stop offset="100%" stop-color="#eef4fb"/>
+    </linearGradient>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#475970"/>
+    </marker>
+    <style>
+      .title { font: 700 34px "Segoe UI", Arial, sans-serif; fill: #18324b; }
+      .subtitle { font: 500 18px "Segoe UI", Arial, sans-serif; fill: #486179; }
+      .lane { font: 700 22px "Segoe UI", Arial, sans-serif; fill: #17324a; }
+      .step { font: 700 20px "Segoe UI", Arial, sans-serif; fill: #17324a; }
+      .body { font: 500 16px "Segoe UI", Arial, sans-serif; fill: #4f6476; }
+    </style>
+  </defs>
+  <rect width="1400" height="980" fill="url(#bg)"/>
+  <text x="84" y="86" class="title">End-to-End Request Flow</text>
+  <text x="84" y="122" class="subtitle">A typical natural-language request expands into setup, lifecycle, and proxy steps before Unreal performs the actual work.</text>
+  <line x1="210" y1="180" x2="210" y2="880" stroke="#8ea1b3" stroke-width="3" stroke-dasharray="12 10"/>
+  <line x1="520" y1="180" x2="520" y2="880" stroke="#8ea1b3" stroke-width="3" stroke-dasharray="12 10"/>
+  <line x1="880" y1="180" x2="880" y2="880" stroke="#8ea1b3" stroke-width="3" stroke-dasharray="12 10"/>
+  <line x1="1190" y1="180" x2="1190" y2="880" stroke="#8ea1b3" stroke-width="3" stroke-dasharray="12 10"/>
+  <text x="138" y="164" class="lane">User</text>
+  <text x="454" y="164" class="lane">AI Agent</text>
+  <text x="788" y="164" class="lane">Hub</text>
+  <text x="1104" y="164" class="lane">UE + RemoteMCP</text>
+  <rect x="72" y="220" width="276" height="86" rx="22" fill="#ffffff"/>
+  <text x="100" y="258" class="step">1. Natural-language intent</text>
+  <text x="100" y="286" class="body">"Compile, launch, then create a Blueprint Actor."</text>
+  <path d="M 348 262 L 490 262" stroke="#475970" stroke-width="5" fill="none" marker-end="url(#arrow)"/>
+  <rect x="392" y="338" width="256" height="92" rx="22" fill="#dbeeff"/>
+  <text x="420" y="378" class="step">2. Expand into tools</text>
+  <text x="420" y="408" class="body">setup_project, install_plugin, compile_project</text>
+  <path d="M 648 384 L 850 384" stroke="#475970" stroke-width="5" fill="none" marker-end="url(#arrow)"/>
+  <rect x="738" y="468" width="284" height="106" rx="22" fill="#ffe5c8"/>
+  <text x="766" y="508" class="step">3. Lifecycle management</text>
+  <text x="766" y="538" class="body">Resolve engine, persist config, build via UBT,</text>
+  <text x="766" y="566" class="body">launch editor, monitor readiness and crashes</text>
+  <path d="M 1022 522 L 1160 522" stroke="#475970" stroke-width="5" fill="none" marker-end="url(#arrow)"/>
+  <rect x="1040" y="620" width="300" height="104" rx="22" fill="#daf5dc"/>
+  <text x="1068" y="660" class="step">4. Execute in editor</text>
+  <text x="1068" y="690" class="body">RemoteMCP exposes tool domains and Python</text>
+  <text x="1068" y="718" class="body">execution inside the active UE instance</text>
+  <path d="M 1190 756 L 912 756" stroke="#475970" stroke-width="5" fill="none" marker-end="url(#arrow)"/>
+  <path d="M 792 792 L 550 792" stroke="#475970" stroke-width="5" fill="none" marker-end="url(#arrow)"/>
+  <path d="M 430 828 L 238 828" stroke="#475970" stroke-width="5" fill="none" marker-end="url(#arrow)"/>
+  <rect x="740" y="734" width="286" height="92" rx="22" fill="#ffffff"/>
+  <text x="768" y="774" class="step">5. Return normalized result</text>
+  <text x="768" y="804" class="body">Hub forwards UE output and status back to the agent</text>
+  <rect x="390" y="770" width="272" height="94" rx="22" fill="#dbeeff"/>
+  <text x="418" y="810" class="step">6. Agent summarizes</text>
+  <text x="418" y="840" class="body">Interprets result and continues the next operation</text>
+</svg>

@@ -1,0 +1,61 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="860" viewBox="0 0 1400 860">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#f7f4ec"/>
+      <stop offset="100%" stop-color="#eef3f7"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="10" stdDeviation="14" flood-color="#1a1a1a" flood-opacity="0.12"/>
+    </filter>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#45556f"/>
+    </marker>
+    <style>
+      .title { font: 700 34px "Segoe UI", Arial, sans-serif; fill: #18324b; }
+      .subtitle { font: 500 18px "Segoe UI", Arial, sans-serif; fill: #486179; }
+      .label { font: 700 22px "Segoe UI", Arial, sans-serif; fill: #17324a; }
+      .meta { font: 500 16px "Segoe UI", Arial, sans-serif; fill: #4f6476; }
+      .small { font: 500 15px "Segoe UI", Arial, sans-serif; fill: #5d6f80; }
+    </style>
+  </defs>
+  <rect width="1400" height="860" fill="url(#bg)"/>
+  <text x="84" y="86" class="title">UnrealMCPHub in the Unreal AI Toolchain</text>
+  <text x="84" y="122" class="subtitle">The project acts as a control plane between MCP-capable agents and Unreal Editor instances.</text>
+  <rect x="80" y="190" width="260" height="360" rx="28" fill="#d9ecff" filter="url(#shadow)"/>
+  <text x="120" y="252" class="label">AI Clients</text>
+  <text x="120" y="292" class="meta">Cursor</text>
+  <text x="120" y="324" class="meta">Claude Desktop</text>
+  <text x="120" y="356" class="meta">Codex / custom agents</text>
+  <text x="120" y="418" class="small">Role</text>
+  <text x="120" y="446" class="meta">Natural-language requests</text>
+  <text x="120" y="476" class="meta">Tool orchestration</text>
+  <text x="120" y="506" class="meta">MCP client endpoint</text>
+  <rect x="450" y="160" width="500" height="420" rx="32" fill="#ffe5c8" filter="url(#shadow)"/>
+  <text x="500" y="232" class="label">UnrealMCPHub</text>
+  <text x="500" y="268" class="meta">Python FastMCP server</text>
+  <text x="500" y="326" class="small">Responsibilities</text>
+  <text x="500" y="358" class="meta">Project setup and config persistence</text>
+  <text x="500" y="390" class="meta">Plugin installation and source selection</text>
+  <text x="500" y="422" class="meta">UBT compile, editor launch, crash monitoring</text>
+  <text x="500" y="454" class="meta">Runtime discovery and multi-instance switching</text>
+  <text x="500" y="486" class="meta">Transparent ue_* proxy to the active editor</text>
+  <text x="500" y="544" class="small">Interfaces</text>
+  <text x="500" y="574" class="meta">stdio MCP</text>
+  <text x="660" y="574" class="meta">HTTP MCP</text>
+  <rect x="1060" y="190" width="260" height="360" rx="28" fill="#daf5dc" filter="url(#shadow)"/>
+  <text x="1100" y="252" class="label">Execution Side</text>
+  <text x="1100" y="292" class="meta">Unreal Editor</text>
+  <text x="1100" y="324" class="meta">RemoteMCP plugin</text>
+  <text x="1100" y="356" class="meta">MCP tool domains</text>
+  <text x="1100" y="418" class="small">Examples</text>
+  <text x="1100" y="446" class="meta">level / blueprint / umg</text>
+  <text x="1100" y="476" class="meta">edgraph / slate / AI tools</text>
+  <text x="1100" y="506" class="meta">Python execution in editor</text>
+  <path d="M 340 370 C 380 370, 395 370, 450 370" stroke="#45556f" stroke-width="6" fill="none" marker-end="url(#arrow)"/>
+  <path d="M 950 370 C 1005 370, 1015 370, 1060 370" stroke="#45556f" stroke-width="6" fill="none" marker-end="url(#arrow)"/>
+  <text x="362" y="340" class="small">MCP calls</text>
+  <text x="973" y="340" class="small">proxy + lifecycle</text>
+  <rect x="120" y="650" width="1180" height="128" rx="24" fill="#ffffff" opacity="0.82"/>
+  <text x="160" y="708" class="label">Key takeaway</text>
+  <text x="160" y="744" class="meta">RemoteMCP provides the in-editor actions; UnrealMCPHub removes the operational friction around getting Unreal ready and keeping the session stable.</text>
+</svg>
