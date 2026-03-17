@@ -77,6 +77,32 @@ def _candidate_urls_for_port(port: int) -> list[str]:
     return [f"http://{host}:{port}/mcp" for host in LOOPBACK_HOSTS]
 
 
+def candidate_urls_for_url(url: str) -> list[str]:
+    """Return URL candidates for a known endpoint, expanding local loopback hosts."""
+    if not url:
+        return []
+
+    candidates = [url]
+    parsed = urlparse(url)
+    if parsed.port and parsed.hostname in LOOPBACK_HOSTS:
+        for candidate in _candidate_urls_for_port(parsed.port):
+            if candidate not in candidates:
+                candidates.append(candidate)
+    return candidates
+
+
+async def probe_unreal_mcp_with_fallback(
+    url: str,
+    timeout: float = 3.0,
+) -> tuple[str, dict] | None:
+    """Probe an endpoint and loopback variants, returning the first verified match."""
+    for candidate in candidate_urls_for_url(url):
+        info = await probe_unreal_mcp(candidate, timeout=timeout)
+        if info:
+            return candidate, info
+    return None
+
+
 # ------------------------------------------------------------------
 # Identify: ask the instance who it is
 # ------------------------------------------------------------------
@@ -93,14 +119,7 @@ def _find_uproject_in_dir(project_dir: str) -> str:
 
 async def _identify_via_mcp(url: str) -> dict | None:
     """Ask the instance about itself via MCP get_unreal_state tool."""
-    candidates = [url]
-    parsed = urlparse(url)
-    if parsed.port:
-        for candidate in _candidate_urls_for_port(parsed.port):
-            if candidate not in candidates:
-                candidates.append(candidate)
-
-    for candidate in candidates:
+    for candidate in candidate_urls_for_url(url):
         try:
             client = UEMCPClient(candidate, timeout_connect=3.0, timeout_read=10.0)
             result = await client.call_tool("get_unreal_state", {})
@@ -232,10 +251,9 @@ async def reprobe_offline_instances(state) -> list[str]:
     for inst in state.list_instances():
         if inst.status == "online" or inst.port == 0:
             continue
-        candidates = [inst.url] if inst.url else []
-        for candidate in _candidate_urls_for_port(inst.port):
-            if candidate not in candidates:
-                candidates.append(candidate)
+        candidates = candidate_urls_for_url(inst.url)
+        if not candidates:
+            candidates = _candidate_urls_for_port(inst.port)
 
         for url in candidates:
             info = await probe_unreal_mcp(url, timeout=3.0)

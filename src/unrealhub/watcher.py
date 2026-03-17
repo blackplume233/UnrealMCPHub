@@ -73,13 +73,20 @@ class ProcessWatcher:
 
     async def _check_instance(self, state, instance) -> None:
         from unrealhub.utils.process import is_process_alive
-        from unrealhub.ue_client import UEMCPClient
+        from unrealhub.tools.discovery_tools import probe_unreal_mcp_with_fallback
 
-        http_ok = await UEMCPClient.probe_endpoint(instance.url, timeout=2.0)
+        probe = await probe_unreal_mcp_with_fallback(instance.url, timeout=2.0)
 
-        if http_ok:
-            if instance.status != "online":
-                state.update_status(instance.key, "online")
+        if probe:
+            matched_url, _ = probe
+            state.upsert(
+                port=instance.port,
+                project_path=instance.project_path,
+                url=matched_url,
+                engine_root=instance.engine_root,
+                pid=instance.pid,
+                status="online",
+            )
             return
 
         pid_alive = instance.pid and is_process_alive(instance.pid)

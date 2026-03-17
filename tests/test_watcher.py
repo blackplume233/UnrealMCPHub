@@ -64,7 +64,7 @@ class TestProcessWatcher:
         watcher.on_crash(lambda key: crashed_keys.append(key))
 
         with patch("unrealhub.utils.process.is_process_alive", return_value=False), \
-             patch("unrealhub.ue_client.UEMCPClient.probe_endpoint", new_callable=AsyncMock, return_value=False):
+             patch("unrealhub.tools.discovery_tools.probe_unreal_mcp_with_fallback", new_callable=AsyncMock, return_value=None):
             await watcher._check_instance(store, store.get_instance("A:8422"))
 
         updated = store.get_instance("A:8422")
@@ -80,11 +80,16 @@ class TestProcessWatcher:
         watcher = ProcessWatcher(lambda: store, interval=60)
 
         with patch("unrealhub.utils.process.is_process_alive", return_value=True), \
-             patch("unrealhub.ue_client.UEMCPClient.probe_endpoint", new_callable=AsyncMock, return_value=True):
+             patch(
+                 "unrealhub.tools.discovery_tools.probe_unreal_mcp_with_fallback",
+                 new_callable=AsyncMock,
+                 return_value=("http://127.0.0.1:8422/mcp", {"server_name": "Remote Unreal MCP"}),
+             ):
             await watcher._check_instance(store, store.get_instance("A:8422"))
 
         updated = store.get_instance("A:8422")
         assert updated.status == "online"
+        assert updated.url == "http://127.0.0.1:8422/mcp"
 
     @pytest.mark.asyncio
     async def test_check_instance_pid_alive_http_down(self, tmp_home):
@@ -95,7 +100,7 @@ class TestProcessWatcher:
         watcher = ProcessWatcher(lambda: store, interval=60)
 
         with patch("unrealhub.utils.process.is_process_alive", return_value=True), \
-             patch("unrealhub.ue_client.UEMCPClient.probe_endpoint", new_callable=AsyncMock, return_value=False):
+             patch("unrealhub.tools.discovery_tools.probe_unreal_mcp_with_fallback", new_callable=AsyncMock, return_value=None):
             await watcher._check_instance(store, store.get_instance("A:8422"))
 
         updated = store.get_instance("A:8422")
@@ -110,7 +115,7 @@ class TestProcessWatcher:
 
         watcher = ProcessWatcher(lambda: store, interval=60)
         with patch("unrealhub.utils.process.is_process_alive", return_value=False), \
-             patch("unrealhub.ue_client.UEMCPClient.probe_endpoint", new_callable=AsyncMock, return_value=False):
+             patch("unrealhub.tools.discovery_tools.probe_unreal_mcp_with_fallback", new_callable=AsyncMock, return_value=None):
             await watcher._check_instance(store, store.get_instance("A:8422"))
 
         assert store.get_instance("A:8422").crash_count == 1

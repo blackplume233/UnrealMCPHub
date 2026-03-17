@@ -211,12 +211,16 @@ def register_launch_tools(
                 "Not waiting for MCP."
             )
 
-        mcp_url = f"http://localhost:{project.mcp_port}/mcp"
+        from unrealhub.tools.discovery_tools import probe_unreal_mcp_with_fallback
+
+        default_mcp_url = f"http://localhost:{project.mcp_port}/mcp"
         start = time.monotonic()
         poll_interval = 2.0
 
         while (time.monotonic() - start) < timeout:
-            if await UEMCPClient.probe_endpoint(mcp_url, timeout=2.0):
+            probe = await probe_unreal_mcp_with_fallback(default_mcp_url, timeout=2.0)
+            if probe:
+                mcp_url, _ = probe
                 elapsed = round(time.monotonic() - start, 1)
                 instance = state.upsert(
                     port=project.mcp_port,
