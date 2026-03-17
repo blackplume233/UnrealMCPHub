@@ -1,5 +1,5 @@
 """Test discovery_tools (discover_instances, manage_instance)."""
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -184,3 +184,64 @@ class TestRegisterOrphanProcesses:
         inst = store.get_instance("unknown:0")
         assert inst is not None
         assert inst.pid == 7777
+
+
+class TestLoopbackFallbackAndVerification:
+    @pytest.mark.asyncio
+    async def test_scan_ports_prefers_numeric_loopback(self, tmp_home):
+        from unrealhub.tools.discovery_tools import _scan_ports
+
+        async def fake_probe(url, timeout=3.0):
+            if url == "http://127.0.0.1:8422/mcp":
+                return {"server_name": "Remote Unreal MCP"}
+            return None
+
+        with patch("unrealhub.tools.discovery_tools.probe_unreal_mcp", side_effect=fake_probe):
+            found = await _scan_ports([8422])
+
+        assert len(found) == 1
+        assert found[0]["url"] == "http://127.0.0.1:8422/mcp"
+
+    @pytest.mark.asyncio
+    async def test_reprobe_offline_uses_unreal_verification(self, tmp_home):
+        from unrealhub.tools.discovery_tools import reprobe_offline_instances
+
+        store, _, _ = _setup(tmp_home)
+        store.upsert(
+            port=8422,
+            project_path="G:/Proj/A.uproject",
+            url="http://localhost:8422/mcp",
+            status="offline",
+        )
+
+        async def fake_probe(url, timeout=3.0):
+            return {"server_name": "Remote Unreal MCP"} if "127.0.0.1" in url else None
+
+        with patch("unrealhub.tools.discovery_tools.probe_unreal_mcp", side_effect=fake_probe):
+            recovered = await reprobe_offline_instances(store)
+
+        assert recovered == ["A:8422"]
+        inst = store.get_instance("A:8422")
+        assert inst is not None
+        assert inst.status == "online"
+        assert inst.url == "http://127.0.0.1:8422/mcp"
+
+    @pytest.mark.asyncio
+    async def test_scan_ports_for_new_requires_unreal_server(self, tmp_home):
+        from unrealhub.tools.discovery_tools import scan_ports_for_new
+
+        store, _, _ = _setup(tmp_home)
+
+        async def fake_probe(url, timeout=3.0):
+            if "8422" in url:
+                return {"server_name": "Remote Unreal MCP"}
+            return None
+
+        with patch("unrealhub.tools.discovery_tools.probe_unreal_mcp", side_effect=fake_probe):
+            new_keys = await scan_ports_for_new(store, [8422, 8423])
+
+        assert new_keys == ["unknown:8422"]
+        inst = store.get_instance("unknown:8422")
+        assert inst is not None
+        assert inst.status == "online"
+        assert inst.url == "http://127.0.0.1:8422/mcp"

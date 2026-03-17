@@ -15,6 +15,7 @@ from unrealhub.utils.process import find_unreal_editor_processes
 logger = logging.getLogger(__name__)
 
 STALE_INSTANCE_HOURS = 1.0
+LOOPBACK_HOSTS = ("127.0.0.1", "localhost")
 
 
 # ------------------------------------------------------------------
@@ -71,6 +72,11 @@ async def probe_unreal_mcp(url: str, timeout: float = 3.0) -> dict | None:
         return None
 
 
+def _candidate_urls_for_port(port: int) -> list[str]:
+    """Return loopback URL candidates for a port, preferring numeric loopback."""
+    return [f"http://{host}:{port}/mcp" for host in LOOPBACK_HOSTS]
+
+
 # ------------------------------------------------------------------
 # Identify: ask the instance who it is
 # ------------------------------------------------------------------
@@ -87,28 +93,37 @@ def _find_uproject_in_dir(project_dir: str) -> str:
 
 async def _identify_via_mcp(url: str) -> dict | None:
     """Ask the instance about itself via MCP get_unreal_state tool."""
-    try:
-        client = UEMCPClient(url, timeout_connect=3.0, timeout_read=10.0)
-        result = await client.call_tool("get_unreal_state", {})
-        if not result.get("success"):
-            return None
-        for item in result.get("content", []):
-            if item.get("type") != "text":
+    candidates = [url]
+    parsed = urlparse(url)
+    if parsed.port:
+        for candidate in _candidate_urls_for_port(parsed.port):
+            if candidate not in candidates:
+                candidates.append(candidate)
+
+    for candidate in candidates:
+        try:
+            client = UEMCPClient(candidate, timeout_connect=3.0, timeout_read=10.0)
+            result = await client.call_tool("get_unreal_state", {})
+            if not result.get("success"):
                 continue
-            data = json.loads(item["text"])
-            if data.get("status") != "connected":
-                return None
-            paths = data.get("paths", {})
-            project_dir = paths.get("project_dir", "")
-            engine_dir = paths.get("engine_dir", "")
-            uproject = _find_uproject_in_dir(project_dir) if project_dir else ""
-            return {
-                "project_path": uproject or project_dir,
-                "project_name": Path(uproject).stem if uproject else Path(project_dir).name if project_dir else "",
-                "engine_root": engine_dir,
-            }
-    except Exception:
-        logger.debug("_identify_via_mcp failed for %s", url, exc_info=True)
+            for item in result.get("content", []):
+                if item.get("type") != "text":
+                    continue
+                data = json.loads(item["text"])
+                if data.get("status") != "connected":
+                    continue
+                paths = data.get("paths", {})
+                project_dir = paths.get("project_dir", "")
+                engine_dir = paths.get("engine_dir", "")
+                uproject = _find_uproject_in_dir(project_dir) if project_dir else ""
+                return {
+                    "project_path": uproject or project_dir,
+                    "project_name": Path(uproject).stem if uproject else Path(project_dir).name if project_dir else "",
+                    "engine_root": engine_dir,
+                    "url": candidate,
+                }
+        except Exception:
+            logger.debug("_identify_via_mcp failed for %s", candidate, exc_info=True)
     return None
 
 
@@ -152,10 +167,11 @@ async def _scan_ports(ports: list[int]) -> list[dict]:
     results: list[dict] = []
 
     async def _probe(port: int) -> None:
-        url = f"http://localhost:{port}/mcp"
-        info = await probe_unreal_mcp(url, timeout=5.0)
-        if info:
-            results.append({"port": port, "url": url, **info})
+        for url in _candidate_urls_for_port(port):
+            info = await probe_unreal_mcp(url, timeout=5.0)
+            if info:
+                results.append({"port": port, "url": url, **info})
+                return
 
     await asyncio.gather(*(_probe(p) for p in ports))
     return results
@@ -216,11 +232,26 @@ async def reprobe_offline_instances(state) -> list[str]:
     for inst in state.list_instances():
         if inst.status == "online" or inst.port == 0:
             continue
-        url = inst.url or f"http://localhost:{inst.port}/mcp"
-        if await UEMCPClient.probe_endpoint(url, timeout=3.0):
-            state.update_status(inst.key, "online")
+        candidates = [inst.url] if inst.url else []
+        for candidate in _candidate_urls_for_port(inst.port):
+            if candidate not in candidates:
+                candidates.append(candidate)
+
+        for url in candidates:
+            info = await probe_unreal_mcp(url, timeout=3.0)
+            if not info:
+                continue
+            state.upsert(
+                port=inst.port,
+                project_path=inst.project_path,
+                url=url,
+                engine_root=inst.engine_root,
+                pid=inst.pid,
+                status="online",
+            )
             recovered.append(inst.key)
-            logger.info("Instance %s came back online (port %d)", inst.key, inst.port)
+            logger.info("Instance %s came back online via %s", inst.key, url)
+            break
     return recovered
 
 
@@ -236,11 +267,14 @@ async def scan_ports_for_new(state, scan_ports: list[int]) -> list[str]:
     for port in scan_ports:
         if port in known_online_ports:
             continue
-        url = f"http://localhost:{port}/mcp"
-        if await UEMCPClient.probe_endpoint(url, timeout=3.0):
+        for url in _candidate_urls_for_port(port):
+            info = await probe_unreal_mcp(url, timeout=3.0)
+            if not info:
+                continue
             inst = state.upsert(port=port, url=url, status="online")
             new_keys.append(inst.key)
-            logger.info("Discovered new instance on port %d: %s", port, inst.key)
+            logger.info("Discovered new instance on port %d via %s: %s", port, url, inst.key)
+            break
     return new_keys
 
 
@@ -337,7 +371,7 @@ def register_discovery_tools(mcp: FastMCP, get_config, get_state) -> None:
             instance = state.upsert(
                 port=r["port"],
                 project_path=info.get("project_path", ""),
-                url=r["url"],
+                url=info.get("url", r["url"]),
                 engine_root=info.get("engine_root", ""),
                 pid=info.get("pid"),
                 status="online",
