@@ -12,3 +12,11 @@ BenchmarkVampire/
 # PyInstaller
 *.spec
 *.manifest
+
+# Local Unreal/benchmark workspace artifacts
+docs.7z
+docs/*.html
+docs/*.pdf
+tools/*
+!tools/run-unrealhub-source.bat
+!tools/run_unrealhub_source.py
