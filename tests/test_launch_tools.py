@@ -41,6 +41,13 @@ class TestLaunchEditorLoopbackFallback:
             "unrealhub.tools.launch_tools.UEPathResolver.resolve_from_uproject",
             return_value=fake_paths,
         ), patch(
+            "unrealhub.tools.launch_tools.UEPathResolver.get_editor_build_target",
+            return_value="AEditor",
+        ), patch(
+            "unrealhub.tools.launch_tools._compile",
+            new_callable=AsyncMock,
+            return_value="Build SUCCEEDED\nExit code: 0",
+        ), patch(
             "unrealhub.tools.launch_tools.find_unreal_editor_processes",
             return_value=[],
         ), patch(
@@ -57,3 +64,67 @@ class TestLaunchEditorLoopbackFallback:
         inst = store.get_instance("A:8422")
         assert inst is not None
         assert inst.url == "http://127.0.0.1:8422/mcp"
+
+    @pytest.mark.asyncio
+    async def test_launch_editor_stops_when_compile_fails(self, tmp_home):
+        _, project, tools = _setup(tmp_home)
+        fake_paths = MagicMock()
+        fake_paths.engine_root = project.engine_root
+        fake_paths.uproject_path = project.uproject_path
+        fake_paths.editor_exe = "G:/UE/Engine/Binaries/Win64/UnrealEditor.exe"
+
+        with patch(
+            "unrealhub.tools.launch_tools.UEPathResolver.resolve_from_uproject",
+            return_value=fake_paths,
+        ), patch(
+            "unrealhub.tools.launch_tools.UEPathResolver.get_editor_build_target",
+            return_value="AEditor",
+        ), patch(
+            "unrealhub.tools.launch_tools.find_unreal_editor_processes",
+            return_value=[],
+        ), patch(
+            "unrealhub.tools.launch_tools._compile",
+            new_callable=AsyncMock,
+            return_value="Build FAILED\nExit code: 6",
+        ), patch(
+            "unrealhub.tools.launch_tools.subprocess.Popen",
+        ) as mock_popen:
+            result = await tools["launch_editor"](wait_for_mcp=False)
+
+        assert "Compile before launch FAILED" in result
+        mock_popen.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_launch_editor_uses_engine_editor_target_for_blueprint_only_project(self, tmp_home):
+        _, project, tools = _setup(tmp_home)
+        fake_paths = MagicMock()
+        fake_paths.engine_root = project.engine_root
+        fake_paths.uproject_path = project.uproject_path
+        fake_paths.editor_exe = "G:/UE/Engine/Binaries/Win64/UnrealEditor.exe"
+
+        fake_proc = MagicMock()
+        fake_proc.pid = 9876
+        fake_proc._handle = None
+
+        with patch(
+            "unrealhub.tools.launch_tools.UEPathResolver.resolve_from_uproject",
+            return_value=fake_paths,
+        ), patch(
+            "unrealhub.tools.launch_tools.UEPathResolver.get_editor_build_target",
+            return_value="UnrealEditor",
+        ), patch(
+            "unrealhub.tools.launch_tools.find_unreal_editor_processes",
+            return_value=[],
+        ), patch(
+            "unrealhub.tools.launch_tools._compile",
+            new_callable=AsyncMock,
+            return_value="Build SUCCEEDED\nExit code: 0",
+        ) as mock_compile, patch(
+            "unrealhub.tools.launch_tools.subprocess.Popen",
+            return_value=fake_proc,
+        ) as mock_popen:
+            result = await tools["launch_editor"](wait_for_mcp=False)
+
+        assert "Compile before launch SUCCEEDED" in result
+        assert mock_compile.await_args.kwargs["build_target_override"] == "UnrealEditor"
+        mock_popen.assert_called_once()

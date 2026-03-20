@@ -5,6 +5,7 @@ import time
 from typing import Any
 
 from mcp.server.fastmcp import FastMCP
+from unrealhub.utils.process import find_unreal_editor_processes, is_process_alive
 
 logger = logging.getLogger(__name__)
 
@@ -68,6 +69,33 @@ def register_proxy_tools(mcp: FastMCP, get_state, get_client) -> None:
 
     class _UECrashed(Exception):
         """Raised by *_with_crash_guard* when the UE process dies mid-call."""
+
+    def _refresh_pid_if_stale(state, active) -> int | None:
+        """Refresh a stale tracked PID from currently running editor processes.
+
+        Hub state can retain an old PID after restart while the MCP endpoint is
+        already serving from a new editor process. If we trust the stale PID,
+        crash-guard logic will immediately produce a false crash.
+        """
+        if not active or not active.project_path:
+            return active.pid if active else None
+        if active.pid and is_process_alive(active.pid):
+            return active.pid
+
+        project_norm = active.project_path.replace("\\", "/").lower()
+        for proc in find_unreal_editor_processes():
+            proc_path = (proc.get("project_path") or "").replace("\\", "/").lower()
+            if proc_path != project_norm:
+                continue
+            new_pid = proc["pid"]
+            state.update_status(active.key, active.status, pid=new_pid)
+            active.pid = new_pid
+            logger.info(
+                "Refreshed stale PID for %s: %s -> %s",
+                active.key, active.pid, new_pid,
+            )
+            return new_pid
+        return active.pid
 
     async def _with_crash_guard(coro, pid: int | None):  # noqa: ANN001
         """Race *coro* against a PID-alive monitor.
@@ -171,7 +199,7 @@ def register_proxy_tools(mcp: FastMCP, get_state, get_client) -> None:
 
         state = get_state()
         active = state.get_active_instance()
-        pid = active.pid if active else None
+        pid = _refresh_pid_if_stale(state, active)
 
         try:
             result = await _with_crash_guard(
@@ -232,7 +260,7 @@ def register_proxy_tools(mcp: FastMCP, get_state, get_client) -> None:
 
         state = get_state()
         active = state.get_active_instance()
-        pid = active.pid if active else None
+        pid = _refresh_pid_if_stale(state, active)
 
         if domain:
             try:
@@ -305,7 +333,7 @@ def register_proxy_tools(mcp: FastMCP, get_state, get_client) -> None:
 
         state = get_state()
         active = state.get_active_instance()
-        pid = active.pid if active else None
+        pid = _refresh_pid_if_stale(state, active)
         start = time.time()
 
         if domain:
@@ -352,7 +380,7 @@ def register_proxy_tools(mcp: FastMCP, get_state, get_client) -> None:
 
         state = get_state()
         active = state.get_active_instance()
-        pid = active.pid if active else None
+        pid = _refresh_pid_if_stale(state, active)
 
         start = time.time()
         try:

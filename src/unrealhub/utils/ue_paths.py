@@ -23,6 +23,16 @@ class ResolvedPaths:
 
 class UEPathResolver:
     @staticmethod
+    def read_uproject_data(uproject_path: str) -> dict:
+        path = Path(uproject_path)
+        if not path.exists():
+            raise ValueError(f"Project file not found: {path}")
+        try:
+            return json.loads(path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError as e:
+            raise ValueError(f"Invalid .uproject JSON: {e}") from e
+
+    @staticmethod
     def resolve_from_uproject(
         uproject_path: str, engine_root: str | None = None
     ) -> ResolvedPaths:
@@ -61,17 +71,23 @@ class UEPathResolver:
 
     @staticmethod
     def parse_engine_association(uproject_path: str) -> str:
-        path = Path(uproject_path)
-        if not path.exists():
-            raise ValueError(f"Project file not found: {path}")
-        try:
-            data = json.loads(path.read_text(encoding="utf-8"))
-        except json.JSONDecodeError as e:
-            raise ValueError(f"Invalid .uproject JSON: {e}") from e
+        data = UEPathResolver.read_uproject_data(uproject_path)
         assoc = data.get("EngineAssociation")
         if assoc is None:
             return ""
         return str(assoc)
+
+    @staticmethod
+    def has_project_modules(uproject_path: str) -> bool:
+        data = UEPathResolver.read_uproject_data(uproject_path)
+        modules = data.get("Modules", [])
+        return bool(modules)
+
+    @staticmethod
+    def get_editor_build_target(uproject_path: str, project_name: str) -> str:
+        if UEPathResolver.has_project_modules(uproject_path):
+            return f"{project_name}Editor"
+        return "UnrealEditor"
 
     @staticmethod
     def resolve_engine_from_registry(engine_association: str) -> str | None:

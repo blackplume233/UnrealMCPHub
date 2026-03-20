@@ -174,6 +174,23 @@ def launch():
         sys.exit(1)
 
     paths = UEPathResolver.resolve_from_uproject(proj.uproject_path, proj.engine_root)
+    build_target = UEPathResolver.get_editor_build_target(
+        paths.uproject_path, paths.project_name
+    )
+    build_cmd = [
+        paths.build_bat,
+        build_target,
+        "Win64",
+        "Development",
+        paths.uproject_path,
+        "-waitmutex",
+    ]
+    click.echo(f"Building before launch: {build_target} Win64 Development")
+    build_result = subprocess.run(build_cmd, capture_output=False)
+    if build_result.returncode != 0:
+        click.echo(f"Build failed with exit code {build_result.returncode}")
+        sys.exit(build_result.returncode)
+
     click.echo(f"Launching: {paths.editor_exe} {paths.uproject_path}")
     subprocess.Popen([paths.editor_exe, paths.uproject_path])
     click.echo(

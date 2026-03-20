@@ -59,6 +59,36 @@ class TestResolveFromUproject:
         with pytest.raises(ValueError, match="Not a .uproject"):
             UEPathResolver.resolve_from_uproject(str(txt), str(fake_engine))
 
+    def test_has_project_modules(self, tmp_path):
+        with_modules = tmp_path / "WithModules.uproject"
+        with_modules.write_text(
+            json.dumps({"EngineAssociation": "5.7", "Modules": [{"Name": "Game"}]}),
+            encoding="utf-8",
+        )
+        no_modules = tmp_path / "NoModules.uproject"
+        no_modules.write_text(
+            json.dumps({"EngineAssociation": "5.7", "Modules": []}),
+            encoding="utf-8",
+        )
+
+        assert UEPathResolver.has_project_modules(str(with_modules)) is True
+        assert UEPathResolver.has_project_modules(str(no_modules)) is False
+
+    def test_get_editor_build_target(self, tmp_path):
+        with_modules = tmp_path / "WithModules.uproject"
+        with_modules.write_text(
+            json.dumps({"EngineAssociation": "5.7", "Modules": [{"Name": "Game"}]}),
+            encoding="utf-8",
+        )
+        no_modules = tmp_path / "NoModules.uproject"
+        no_modules.write_text(
+            json.dumps({"EngineAssociation": "5.7", "Modules": []}),
+            encoding="utf-8",
+        )
+
+        assert UEPathResolver.get_editor_build_target(str(with_modules), "WithModules") == "WithModulesEditor"
+        assert UEPathResolver.get_editor_build_target(str(no_modules), "NoModules") == "UnrealEditor"
+
 
 class TestValidatePaths:
     def test_all_valid(self, fake_project, fake_engine):
