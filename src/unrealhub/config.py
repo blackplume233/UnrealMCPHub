@@ -18,7 +18,7 @@ class ProjectEntry(BaseModel):
 PLUGIN_GITHUB_OWNER = "blackplume233"
 PLUGIN_GITHUB_REPO = "UnrealRemoteMCP"
 
-PLUGIN_TAG = "master"
+PLUGIN_TAG = "v1.0.0"
 
 def _plugin_zip_url(ref: str = PLUGIN_TAG) -> str:
     """Build the GitHub archive download URL for a given git ref (tag or branch)."""

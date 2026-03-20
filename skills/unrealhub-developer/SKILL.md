@@ -68,3 +68,14 @@ UnrealMCPHub/
 - [ ] 错误处理（连接失败、实例离线、参数校验）
 - [ ] **同步更新** `skills/use-unrealhub/SKILL.md`
 - [ ] 如有新的使用模式/注意事项，同步补充到技能文件的对应 Part
+
+## 发布检查清单
+
+每次 Hub 发版（打 tag / bump version）前必须执行：
+
+- [ ] **更新 `PLUGIN_TAG`**：检查 [RemoteMCP](https://github.com/blackplume233/UnrealRemoteMCP) 最新 tag，
+      将 `src/unrealhub/config.py` 中的 `PLUGIN_TAG` 更新为该 tag（如 `"v1.0.0"`）
+- [ ] **更新 `pyproject.toml` version**：与 git tag 一致
+- [ ] **全量测试通过**：`pytest tests/ -v`
+- [ ] **SKILL.md 同步**：确认 `skills/use-unrealhub/SKILL.md` 反映所有变更
+- [ ] **Lint 清零**：无新增 lint 错误
