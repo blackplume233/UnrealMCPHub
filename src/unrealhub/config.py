@@ -15,9 +15,20 @@ class ProjectEntry(BaseModel):
     configured_at: str = ""
 
 
-DEFAULT_PLUGIN_REPO = (
-    "https://github.com/blackplume233/UnrealRemoteMCP/archive/refs/heads/master.zip"
-)
+PLUGIN_GITHUB_OWNER = "blackplume233"
+PLUGIN_GITHUB_REPO = "UnrealRemoteMCP"
+
+PLUGIN_TAG = "master"
+
+def _plugin_zip_url(ref: str = PLUGIN_TAG) -> str:
+    """Build the GitHub archive download URL for a given git ref (tag or branch)."""
+    if "/" not in ref and ref != "master" and ref != "main":
+        path = f"refs/tags/{ref}"
+    else:
+        path = f"refs/heads/{ref}"
+    return f"https://github.com/{PLUGIN_GITHUB_OWNER}/{PLUGIN_GITHUB_REPO}/archive/{path}.zip"
+
+DEFAULT_PLUGIN_REPO = _plugin_zip_url(PLUGIN_TAG)
 
 
 class HubConfig(BaseModel):

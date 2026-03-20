@@ -270,7 +270,9 @@ def create_hub_mcp() -> FastMCP:
             sections.append("  No project configured. Run setup_project().")
 
         # --- Plugin Source ---
+        from unrealhub.config import PLUGIN_TAG
         sections.append("\n[Plugin Source]")
+        sections.append(f"  Pinned tag: {PLUGIN_TAG}")
         sections.append(f"  Repo: {config.get_plugin_repo()}")
         cache = config.get_plugin_cache()
         sections.append(f"  Local cache: {cache or '(none)'}")

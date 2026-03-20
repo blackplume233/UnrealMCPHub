@@ -196,7 +196,8 @@ def register_install_tools(mcp: FastMCP, get_config) -> None:
         project_dir = target_path.parent
         plugin_dir = project_dir / "Plugins" / "RemoteMCP"
 
-        lines = [f"Project: {target_project}"]
+        from unrealhub.config import PLUGIN_TAG
+        lines = [f"Project: {target_project}", f"Hub pinned plugin tag: {PLUGIN_TAG}"]
 
         if plugin_dir.exists() and (plugin_dir / "RemoteMCP.uplugin").exists():
             lines.append("Plugin directory: INSTALLED")
