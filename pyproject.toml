@@ -1,6 +1,6 @@
 [project]
 name = "unrealhub"
-version = "0.2.4"
+version = "0.3.0"
 description = "UnrealMCPHub - Central management platform for Unreal Engine MCP instances"
 readme = "README.md"
 requires-python = ">=3.11"
